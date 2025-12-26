@@ -40,6 +40,22 @@ Make sure OpenSlide is properly installed and available on your system.
 
 Contributions, issues, and feature requests are welcome.
 
+## Publication
+
+This code is based mostly on a DiagSet experiments, if you find it useful, use can use:
+```bibtex
+@article{koziarski2024diagset,
+  title={DiagSet: a dataset for prostate cancer histopathological image classification},
+  author={Koziarski, Micha{\l} and Cyganek, Bogus{\l}aw and Niedziela, Przemys{\l}aw and Olborski, Bogus{\l}aw and Antosz, Zbigniew and {\.Z}ydak, Marcin and Kwolek, Bogdan and W{\k{a}}sowicz, Pawe{\l} and Buka{\l}a, Andrzej and Swad{\'z}ba, Jakub and others},
+  journal={Scientific Reports},
+  volume={14},
+  number={1},
+  pages={6780},
+  year={2024},
+  publisher={Nature Publishing Group UK London}
+}
+```
+
 ## License
 
 MIT License
