@@ -15,8 +15,11 @@ from diaglib.data.diagset.paths import get_nested_path
 from diaglib.data.imagenet.containers import IMAGENET_IMAGE_MEAN
 # from diaglib.predict.maps.common import segment_foreground_vdsr
 from queue import Queue
-from shapely.geometry.polygon import Polygon
 from threading import Thread
+
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon as MplPolygon
+from shapely.geometry import MultiPolygon, Polygon
 
 
 class AbstractDiagSetDataset(ABC):
@@ -579,3 +582,147 @@ class Scan:
                 
     
         return images, positions, img_pos
+
+    def plot_full_slide(self, downsample=8):
+    
+        level = self.slide.get_best_level_for_downsample(downsample)  
+        w, h = self.slide.level_dimensions[level]
+        img = self.slide.read_region((0, 0), level, (w, h)).convert("RGB")
+    
+        # level-0 -> level scaling
+        down = self.slide.level_downsamples[level]
+        scale_x, scale_y = (down, down) if not isinstance(down, (tuple, list, np.ndarray)) else down
+        
+        # simple color map per label (edge only; change as you like)
+        colors = {
+            "BG": "gray",
+            "T": "tab:orange",
+            "N": "tab:green",
+            "A": "tab:blue",
+            "R1": "tab:red",
+            "R2": "tab:purple",
+            "R3": "tab:brown",
+            "R4": "tab:pink",
+            "R5": "tab:olive",
+        }
+        
+        def _to_level_coords(coords):
+            xs, ys = zip(*coords)
+            xs = np.asarray(xs) / scale_x
+            ys = np.asarray(ys) / scale_y
+            return np.column_stack([xs, ys])
+        
+        
+        fig, ax = plt.subplots(figsize=(12, 12 * h / w))
+        ax.imshow(img)
+        
+        # turn axis on so we can have ticks
+        ax.set_axis_on()
+        
+        # How sparse you want ticks (in display coordinates, at this level)
+        xticks_level = np.arange(0, w, step=500)   # every 500 pixels at current level
+        yticks_level = np.arange(0, h, step=500)
+        
+        # Convert those ticks to level-0 coordinates for labels
+        xtick_labels = (xticks_level * scale_x).astype(int)
+        ytick_labels = (yticks_level * scale_y).astype(int)
+        
+        ax.set_xticks(xticks_level)
+        ax.set_xticklabels(xtick_labels, rotation=45, fontsize=8)
+        ax.set_yticks(yticks_level)
+        ax.set_yticklabels(ytick_labels, fontsize=8)
+        
+        # Light gray grid lines
+        ax.grid(True, color='lightgray', linewidth=0.5, linestyle='--')
+        
+        legend_handles = []
+        for label, geom in self.polygons.items():
+            if geom.is_empty:
+                continue
+            geoms = geom.geoms if isinstance(geom, MultiPolygon) else [geom]
+            edgecolor = colors.get(label, "yellow")
+            for g in geoms:
+                ext = _to_level_coords(g.exterior.coords)
+                ax.add_patch(MplPolygon(ext, fill=False, linewidth=1.2, edgecolor=edgecolor))
+                for ring in g.interiors:
+                    hole = _to_level_coords(ring.coords)
+                    ax.add_patch(MplPolygon(hole, fill=False, linewidth=1.0, edgecolor=edgecolor, linestyle="--"))
+            if label not in [h.get_label() for h in legend_handles]:
+                legend_handles.append(MplPolygon([[0,0]], fill=False, edgecolor=edgecolor, label=label))
+        
+        if legend_handles:
+            ax.legend(handles=legend_handles, loc="upper right", frameon=True)
+        
+        plt.tight_layout()
+        plt.show()
+
+
+    def show_roi_level0(
+        self,
+        x0_0, y0_0, w0, h0,          # ROI in LEVEL-0 pixels
+        downsample=8,                 # how zoomed-out to view it
+        figsize=10,
+    ):
+
+        colors = {
+            "BG": "gray",
+            "T": "tab:orange",
+            "N": "tab:green",
+            "A": "tab:blue",
+            "R1": "tab:red",
+            "R2": "tab:purple",
+            "R3": "tab:brown",
+            "R4": "tab:pink",
+            "R5": "tab:olive",
+        }
+        
+        # choose level close to requested downsample
+        level = self.slide.get_best_level_for_downsample(downsample)
+        ds = self.slide.level_downsamples[level]
+        sx, sy = (ds, ds) if not isinstance(ds, (tuple, list, np.ndarray)) else ds
+    
+        # ROI size in THIS level's pixels
+        wL = int(np.ceil(w0 / sx))
+        hL = int(np.ceil(h0 / sy))
+    
+        # read ROI (note x0_0,y0_0 are level-0 coords!)
+        img = self.slide.read_region((int(x0_0), int(y0_0)), level, (wL, hL)).convert("RGB")
+        img = np.array(img)
+    
+        fig, ax = plt.subplots(figsize=(figsize, figsize * hL / max(wL, 1)))
+        ax.imshow(img)
+        ax.set_title(f"ROI level-0=({x0_0},{y0_0}) size=({w0}x{h0}) shown at level {level} (ds≈{sx})")
+        ax.set_axis_on()
+    
+        # draw annotations clipped/shifted into ROI
+        if colors is None:
+            colors = {}
+    
+        for label, geom in self.polygons.items():
+            if geom.is_empty:
+                continue
+            edgecolor = colors.get(label, "yellow")
+            geoms = geom.geoms if isinstance(geom, MultiPolygon) else [geom]
+    
+            for g in geoms:
+                # quick bbox reject in level-0 coords
+                minx, miny, maxx, maxy = g.bounds
+                if maxx < x0_0 or maxy < y0_0 or minx > x0_0 + w0 or miny > y0_0 + h0:
+                    continue
+    
+                # exterior
+                ext0 = np.asarray(g.exterior.coords, dtype=np.float64)
+                extL = np.column_stack([(ext0[:,0] - x0_0)/sx, (ext0[:,1] - y0_0)/sy])
+                ax.add_patch(MplPolygon(extL, fill=False, linewidth=1.2, edgecolor=edgecolor))
+    
+                # holes
+                for ring in g.interiors:
+                    hole0 = np.asarray(ring.coords, dtype=np.float64)
+                    holeL = np.column_stack([(hole0[:,0] - x0_0)/sx, (hole0[:,1] - y0_0)/sy])
+                    ax.add_patch(MplPolygon(holeL, fill=False, linewidth=1.0, edgecolor=edgecolor, linestyle="--"))
+    
+        plt.tight_layout()
+        plt.show()
+    
+        return level, (sx, sy)
+
