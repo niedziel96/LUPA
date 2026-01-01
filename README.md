@@ -42,7 +42,7 @@ Contributions, issues, and feature requests are welcome.
 
 ## Publication
 
-This code is based mostly on a DiagSet experiments, if you find it useful, use can use:
+This code is based mostly on a DiagSet experiments, if you find it useful, you can use:
 ```bibtex
 @article{koziarski2024diagset,
   title={DiagSet: a dataset for prostate cancer histopathological image classification},
