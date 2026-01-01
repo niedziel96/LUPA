@@ -1,0 +1,7 @@
+pandas
+xmltodict
+shapely
+tqdm
+timm
+scikit-learn
+matplotlib
